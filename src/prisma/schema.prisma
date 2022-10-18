@@ -15,15 +15,14 @@ model Solution {
 }
 
 model Changes {
+    changeId   Int @id @default(autoincrement())
     solutionId String
     orgId      String
     actorId    String
-    userId     String       @default("mychanges")
+    userId     String
     changes    String[]
     status     ChangeStatus @default(UNMERGED)
     createdAt  DateTime     @default(now())
-
-    @@unique([solutionId, actorId])
 }
 
 enum ChangeStatus {
