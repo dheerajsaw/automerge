@@ -4,7 +4,7 @@ import { UpdateDocDto } from './dto/update-doc.dto';
 import { InjectModel } from "@nestjs/mongoose"
 import { Model } from "mongoose"
 import { Docs, DocsDocument } from './schemas/docs.schema';
-import { init, applyChanges, save, load, BinaryDocument, BinaryChange, uuid } from "automerge"
+import { init, applyChanges, save, load, uuid } from "@automerge/automerge"
 
 @Injectable()
 export class DocsService {
@@ -14,7 +14,7 @@ export class DocsService {
     let id: string = uuid()
     const initDoc = init()
     console.log("init", initDoc)
-    const initDbDoc: BinaryDocument = save(initDoc)
+    const initDbDoc: Uint8Array = save(initDoc)
     let encodedDoc = Buffer.from(initDbDoc).toString('base64')
     console.log("saved", initDbDoc)
     const createdDoc = new this.docsModel({ docId: id, doc: encodedDoc });
@@ -32,19 +32,19 @@ export class DocsService {
     console.log("oldDoc", oldDoc)
     let bytes = new Uint8Array(Buffer.from(oldDoc.doc, 'base64'))
     console.log("loadedDbDoc from db", bytes)
-    let loadedDbDoc = load(bytes as BinaryDocument)
+    let loadedDbDoc = load(bytes as Uint8Array) //* known as type Casting
     console.log("loadedDbDoc", loadedDbDoc)
     const changes: string[] = updateDocDto.changes
     let incomingChanges = changes.map(
       c => {
         console.log("changes", c)
         let bytes = new Uint8Array(Buffer.from(c, 'base64'))
-        return bytes as BinaryChange
+        return bytes as Uint8Array  //! know as type casting 
       }
     )
     console.log("incomingChanges", incomingChanges)
 
-    const [updatedDoc, patches] = applyChanges(loadedDbDoc, incomingChanges)
+    const [updatedDoc] = applyChanges(loadedDbDoc, incomingChanges)
     let updatedBinary = save(updatedDoc)
     let encodedDoc = Buffer.from(updatedBinary).toString('base64')
     console.log("updated doc", encodedDoc)
