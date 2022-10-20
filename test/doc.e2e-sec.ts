@@ -1,7 +1,9 @@
 import { HttpStatus } from "@nestjs/common";
 import { change, getChanges, init } from "@automerge/automerge";
 import * as request from "supertest"
-
+/**
+ *  Manual testing file 
+ */
 
 describe("DocsController (e2e)", () => {
     let url = `http://localhost:3000/solution`

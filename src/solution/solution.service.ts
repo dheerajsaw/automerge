@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { CreateSolutionDto } from './dto/create-solution.dto';
 import { UpdateSolutionDto } from './dto/update-solution.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { Changes, ChangeStatus } from '@prisma/client';
@@ -9,16 +8,15 @@ import {
   save,
   load,
   uuid,
-  change,
   decodeChange,
 } from '@automerge/automerge';
 
 @Injectable()
 export class SolutionService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(private readonly prismaService: PrismaService) { }
 
   /**
-   * @param createSolutionDto
+   * @param @orgId
    * @returns Created Solution
    */
   async create(orgId: string) {
@@ -31,21 +29,22 @@ export class SolutionService {
         solutionId: id,
         orgId: orgId,
         encodedSolution: encodedSolution,
-      },
+      }
     });
     return createdSolution;
-  }
+  };
 
   /**
-   * This is for fetch from changes table and applyChanges in solution table
+   * Taking unmerged changes if it is and merging
+   * If not then sending updated solution 
+   * @param solutionId
+   * @returns Updated solution
    */
   async getUpdatedSolution(solutionId: string) {
-    const solution = await this.prismaService.solution.findUnique({
-      where: { solutionId },
+    const dbSolution = await this.prismaService.solution.findUnique({
+      where: { solutionId }
     });
-    console.log(solution);
-
-    if (solution === null || solution === undefined) {
+    if (dbSolution === null || dbSolution === undefined) {
       throw new BadRequestException('Solution not found');
     }
     const unmergedChanges: Changes[] =
@@ -53,62 +52,59 @@ export class SolutionService {
         where: {
           solutionId: solutionId,
           status: ChangeStatus.UNMERGED,
-        },
+        }
       });
-    console.log(unmergedChanges);
-
     if (unmergedChanges === undefined || unmergedChanges.length === 0) {
-      return solution.encodedSolution;
+      return dbSolution.encodedSolution;
     } else {
       const unmergedChangesArray = unmergedChanges.map((changes) =>
-        changes.changes.map((c) => new Uint8Array(Buffer.from(c, 'base64'))),
+        changes.changes.map((c) => new Uint8Array(Buffer.from(c, 'base64')))
       );
       const decodeSolution = new Uint8Array(
-        Buffer.from(solution.encodedSolution, 'base64'),
+        Buffer.from(dbSolution.encodedSolution, 'base64')
       );
-      const loadUnmergedSolution = load(decodeSolution);
-      let updatedSolution = loadUnmergedSolution;
+      const loadedUnmergedSolution = load(decodeSolution);
+      let updatedSolution = loadedUnmergedSolution;
       unmergedChangesArray.forEach(
         (changes) =>
-          ([updatedSolution] = applyChanges(updatedSolution, changes)),
+          ([updatedSolution] = applyChanges(updatedSolution, changes))
       );
-
       const savedUpdatedSolution = save(updatedSolution);
       const encodedUpdatedSolution =
         Buffer.from(savedUpdatedSolution).toString('base64');
       await this.prismaService.solution.update({
         where: {
-          solutionId,
+          solutionId: solutionId
         },
         data: {
-          encodedSolution: encodedUpdatedSolution,
-        },
+          encodedSolution: encodedUpdatedSolution
+        }
       });
       await this.prismaService.changes.updateMany({
         where: {
           solutionId: solutionId,
           changeId: {
-            in: unmergedChanges.map((c) => c.changeId),
-          },
+            in: unmergedChanges.map((c) => c.changeId)
+          }
         },
         data: {
-          status: ChangeStatus.MERGED,
-        },
+          status: ChangeStatus.MERGED
+        }
       });
       return encodedUpdatedSolution;
     }
-  }
+  };
 
   /**
    * @param solutionId
-   * @returns Saved Solution In MongoDB
+   * @returns Passing handle to getUpdatedSolution function
    */
   async getSolutionById(solutionId: string) {
     return await this.getUpdatedSolution(solutionId);
-  }
+  };
 
   /**
-   * Updating Solution With Incoming Changes
+   * Creating changes
    * @param solutionId
    * @param updateSolutionDto
    * @returns @Void
@@ -127,7 +123,6 @@ export class SolutionService {
       }
       actorChanges[change.actor].push(changeBase64);
     });
-
     for (let actor in actorChanges) {
       const createChanges = await this.prismaService.changes.create({
         data: {
@@ -140,7 +135,7 @@ export class SolutionService {
       });
       return;
     }
-  }
+  };
 
   /**
    * Deleting Solution
@@ -148,14 +143,10 @@ export class SolutionService {
    * @return @void
    */
   async delete(solutionId: string) {
-    try {
-      await this.prismaService.solution.delete({
-        where: {
-          solutionId,
-        },
-      });
-    } catch (error) {
-      throw new Error('internal server Error');
-    }
-  }
+    await this.prismaService.solution.delete({
+      where: {
+        solutionId,
+      },
+    });
+  };
 }
